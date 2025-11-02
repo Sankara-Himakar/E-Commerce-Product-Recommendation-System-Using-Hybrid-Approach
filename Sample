@@ -1,0 +1,40 @@
+#Project Sample Code..
+import pandas as pd
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
+data = {
+    'product_id': [1, 2, 3, 4],
+    'product_name': ['Phone', 'Headphones', 'Charger', 'Smartwatch'],
+    'description': [
+        'Android smartphone with 64GB storage',
+        'Wireless headphones with noise cancellation',
+        'Fast charger for Android and iPhone',
+        'Smartwatch with fitness tracking features'
+    ],
+    'user_rating': [4.5, 4.0, 4.2, 4.3]
+}
+df = pd.DataFrame(data)
+
+tfidf = TfidfVectorizer(stop_words='english')
+tfidf_matrix = tfidf.fit_transform(df['description'])
+content_similarity = cosine_similarity(tfidf_matrix)
+
+ratings = np.array([
+    [5, 3, 4, 4],
+    [4, 5, 4, 3],
+    [3, 4, 5, 4],
+    [4, 4, 4, 5]
+])
+collab_similarity = cosine_similarity(ratings)
+
+hybrid_score = 0.6 * content_similarity + 0.4 * collab_similarity
+
+def recommend(product_index):
+    scores = list(enumerate(hybrid_score[product_index]))
+    scores = sorted(scores, key=lambda x: x[1], reverse=True)
+    print(f"If user likes '{df['product_name'][product_index]}', then we recommend:\n")
+    for i, score in scores[1:]:
+        print(f"  ➤ {df['product_name'][i]} (Similarity Score: {score:.2f})")
+
+recommend(0)  
