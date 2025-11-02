@@ -1,0 +1,207 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import sys
+import os
+import glob
+import r
+from collaborativeFiltering import cf
+from contentBasedFiltering import cbf
+from pearsonsRCorrelation import prc
+from products import prodList
+from orders_products_df import ordersProducts
+
+# %matplotlib inline
+plt.style.use("ggplot")
+
+import sklearn
+from sklearn.decomposition import TruncatedSVD
+orders = pd.read_csv("dataset/orders.csv")
+departments = pd.read_csv("dataset/departments.csv")
+aisles = pd.read_csv("dataset/aisles.csv")
+order_products_prior = pd.read_csv("dataset/order_products__prior.csv")
+products = pd.read_csv("dataset/products.csv")
+order_products_train = pd.read_csv("dataset/order_products__train.csv")
+amazon_ratings = pd.read_csv('dataset/ratings_Beauty.csv')
+amazon_ratings = amazon_ratings.dropna()
+amazon_ratings.head()
+
+amazon_ratings.shape
+# Subset of Amazon Ratings
+
+amazon_ratings1 = amazon_ratings.head(10000)
+ratings_utility_matrix = amazon_ratings1.pivot_table(values='Rating',
+index='UserId', columns='ProductId', fill_value=0)
+ratings_utility_matrix.head()
+ratings_utility_matrix.shape
+X = ratings_utility_matrix.T
+X.head()
+X.shape
+X1 = X
+SVD = TruncatedSVD(n_components=10)
+decomposed_matrix = SVD.fit_transform(X)
+decomposed_matrix.shape
+correlation_matrix = np.corrcoef(decomposed_matrix)
+correlation_matrix.shape
+correlation_matrix
+X.index[99]
+
+i = "6117036094"
+
+product_names = list(X.index)
+product_ID = product_names.index(i)
+product_ID
+correlation_product_ID = correlation_matrix[product_ID]
+correlation_product_ID.shape
+min_confidence = 0.90
+Recommend = list(X.index[correlation_product_ID > min_confidence])
+
+# Removes the item already bought by the customer
+
+Recommend.remove(i)
+
+Recommend[0:9]
+import pandas as pd
+from scipy.sparse import csr_matrix
+from sklearn.neighbors import NearestNeighbors
+from orders_products_df import ordersProducts
+from products import prodList
+
+def cf(query_index):
+products = prodList()
+products = pd.DataFrame(products, columns =['product_id',
+'product_name', 'aisle_id', 'department_id', 'aisle', 'department'])
+orders_products_df = ordersProducts()
+orders_products_df_matrix = csr_matrix(orders_products_df.values)
+
+model_knn = NearestNeighbors(metric = 'cosine', algorithm = 'brute')
+model_knn.fit(orders_products_df_matrix)
+
+distances, indices =
+model_knn.kneighbors(orders_products_df.iloc[query_index,:].values.reshap
+e(1, -1), n_neighbors = 13)
+
+reco = []
+for i in range(len(distances.flatten())):
+reco.append(orders_products_df.index[indices.flatten()[i]])
+reco = pd.DataFrame(reco, columns=['product_name'])
+reco = reco.merge(products, on='product_name')
+swap_list = ["product_id","product_name","aisle_id","department_id",
+"aisle", "department"]
+
+reco = reco.reindex(columns=swap_list)
+return reco
+import pandas as pd
+import numpy as np
+import pickle
+from flask import url_for
+from products import prodList
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import sigmoid_kernel
+
+def cbf(product_name):
+products = prodList()
+products = pd.DataFrame(products, columns =['product_id',
+'product_name', 'aisle_id', 'department_id', 'aisle', 'department'])
+productsCopy = products.copy()
+
+tfv = TfidfVectorizer(min_df=3, max_features=None,
+strip_accents='unicode', analyzer='word',
+token_pattern='\w{1,}',
+ngram_range=(1,3),
+stop_words='english')
+
+products['description'] = products.apply(lambda x : x[4] + ' ' + x[5], axis
+= 1)
+
+products['description'] = products['description'].fillna('')
+tfv_matrix = tfv.fit_transform(products['description'])
+sig = sigmoid_kernel(tfv_matrix, tfv_matrix)
+# sig = np.loadtxt('application/remommendationMethods/sigmoid.txt')
+
+# sig = np.ndarray(sig)
+
+indices = pd.Series(products.index,
+index=products['product_name']).drop_duplicates()
+
+idx = indices[product_name]
+sig_scores = list(enumerate(sig[idx]))
+sig_scores = sorted(sig_scores, key = lambda x: x[1], reverse = True)
+sig_scores = sig_scores[1:13]
+product_indices = [i[0] for i in sig_scores]
+print(products['product_name'].iloc[product_indices])
+products = products['product_name'].iloc[product_indices]
+products = pd.DataFrame(products)
+products.index.names = ['product_id']
+print(products, productsCopy.columns)
+
+products = products.merge(productsCopy, on='product_id')
+return products
+import pandas as pd
+from products import prodList
+
+def ordersProducts():
+order_products_train = pd.read_csv("dataset/order_products__train.csv")
+products = prodList()
+products = pd.DataFrame(products, columns =['product_id',
+'product_name', 'aisle_id', 'department_id', 'aisle', 'department'])
+orders_products = order_products_train.merge(products,
+on='product_id')
+orders_products.rename(columns = {'add_to_cart_order':'rating'},
+inplace = True)
+
+print(orders_products.columns)
+orders_products = orders_products.dropna(axis = 0, subset =
+['product_name'])
+ratingCount = (orders_products.
+groupby(by = ['product_name'])['rating'].
+count().
+reset_index().
+rename(columns = {'rating': 'totalRatingCount'})
+[['product_name', 'totalRatingCount']]
+)
+
+orders_products_with_totalRatingCount =
+orders_products.merge(ratingCount, left_on = 'product_name', right_on =
+'product_name', how = 'left')
+
+rating_threshold_min = 0
+rating_threshold_max = 50
+rating_popular_products=
+orders_products_with_totalRatingCount.query('totalRatingCount >=
+‘rating_threshold_min')
+rating_popular_products=
+orders_products_with_totalRatingCount.query('totalRatingCount <=
+‘rating_threshold_max')
+print(pd.unique(rating_popular_products['product_id']).size,
+rating_popular_products['order_id'].shape)
+
+orders_products_df=rating_popular_products.pivot_table(index='product_na
+me',columns='order_id',values='rating').fillna(0)
+return orders_products_df
+import pandas as pd
+
+
+import numpy as np
+
+def prodList():
+products = pd.read_csv("dataset/products.csv")
+aisles = pd.read_csv("dataset/aisles.csv")
+departments = pd.read_csv("dataset/departments.csv")
+
+products = products.merge(aisles, on='aisle_id').merge(departments,
+on='department_id')
+products = products.sort_values('product_id')
+products = products[:1000]
+products = products.to_numpy().tolist()
+return products
+def show_recommendations(product):
+#print("Cluster ID:")
+Y = vectorizer.transform([product])
+prediction = model.predict(Y)
+#print(prediction)
+print_cluster(prediction[0])
+show_recommendations("cutting tool")
+show_recommendations("spray paint")
+show_recommendations("steel drill")
+show_recommendations("water")
