@@ -27,7 +27,7 @@ amazon_ratings = amazon_ratings.dropna()
 amazon_ratings.head()
 
 amazon_ratings.shape
-# Subset of Amazon Ratings
+# Subset of walmart Ratings
 
 amazon_ratings1 = amazon_ratings.head(10000)
 ratings_utility_matrix = amazon_ratings1.pivot_table(values='Rating',
